@@ -18,5 +18,6 @@ print(stringRDD)
 words = stringRDD.map(lambda word: (word, 1))
 print(words.values())
 wordCount = words.reduceByKey(lambda x, y: x+y)
-print(wordCount.collect())
+wordCount.collect()
 
+sc.sequenceFile()
