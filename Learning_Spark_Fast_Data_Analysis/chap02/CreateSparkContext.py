@@ -11,5 +11,4 @@ from pyspark import SparkConf, SparkContext
 
 conf = SparkConf().setMaster("local").setAppName("Spark-init")
 sc = SparkContext(conf=conf)
-sc.parallelize()
 print(sc)
