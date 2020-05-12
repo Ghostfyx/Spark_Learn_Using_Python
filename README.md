@@ -22,3 +22,5 @@ Spark可以理解为MapReduce的升级版，为了计算MapReduce计算框架的
 还有其他缺点，后期进行补充
 
 ### 2.2 第二章 Spark浅析
+- Spark快速大数据分析
+- Spark权威指南
