@@ -12,6 +12,7 @@ from pprint import pprint
 
 from pyspark import *
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import desc
 
 PYSPARK_PYTHON ="/Library/Frameworks/Python.framework/Versions/3.6/bin/python3"
 os.environ["PYSPARK_PYTHON"] = PYSPARK_PYTHON
@@ -58,10 +59,58 @@ pprint(flight_data_2015.take(3))
                 +- *(1) FileScan csv [DEST_COUNTRY_NAME#22] Batched: false, Format: CSV, Location: InMemoryFileIndex[file:/Users/yuexiangfan/coding/PythonProject/Spark_Learn_Using_Python/Spark_The..., PartitionFilters: [], PushedFilters: [], ReadSchema: struct<DEST_COUNTRY_NAME:string>
                 
     第一步：读取CSV文件；
-    第二步：HashAggregate 根据DEST_COUNTRY_NAME列的Hash值聚合
-    第三步：hashpartitioning 根据DEST_COUNTRY_NAME列的Hash值 重新分区
-    第四步：     
+    第二步：HashAggregate 根据DEST_COUNTRY_NAME列的Hash值聚合，会改变分区，2-4步涉及shuffle
+    第三步：hashpartitioning 根据DEST_COUNTRY_NAME列的Hash值 重新分区，默认情况输出200个shuffle分区
+    第四步：HashAggregate count计数，与group都会有shuffle操作
+    第五步：rangepartitioning sort排序，不改变分区     
 '''
 dataFrameWay = flight_data_2015.groupBy("DEST_COUNTRY_NAME").count().sort("count")
 dataFrameWay.explain()
+
+# 改变spark宽依赖的shuffle分区数量
+spark.conf.set("spark.sql.shuffle.partitions", "5")
+dataFrameWay_Opm = flight_data_2015.groupBy("DEST_COUNTRY_NAME").count().sort("count")
+dataFrameWay_Opm.explain()
+
+'''
+    上面介绍了Spark DataFrame，下面对Spark SQL进行介绍，涉及以下几个转换操作：
+    1. 注册临时表
+'''
+flight_data_2015.createOrReplaceTempView("flight_data_table_2015")
+sqlWay = spark.sql("""
+Select DEST_COUNTRY_NAME, count(1) as _count
+From flight_data_table_2015
+group by DEST_COUNTRY_NAME
+""")
+sqlWay.show()
+# Spark SQL与DataFrame的物理执行计划相同
+sqlWay.explain()
+
+maxCount = flight_data_2015.groupBy("DEST_COUNTRY_NAME")\
+    .sum("count").withColumnRenamed("sum(count)", "destination_total")\
+    .sort(desc("destination_total")).limit(5)
+
+maxSql = spark.sql("""
+Select DEST_COUNTRY_NAME, sum(count) as destination_total
+From flight_data_table_2015
+group by DEST_COUNTRY_NAME 
+order by destination_total desc
+limit 5
+""")
+'''
+    上面Spark转换操作是一个有向无环图(DAG)，每个转换产生一个新的不可变的DataFrame
+    完整转换流程如下：
+        第一步：读取数据
+        第二步：groupBy 按照指定列分组
+        第三步：sum聚合操作
+        第四步：withColumnRenamed 重命名列
+        第五步：orderBy 排序
+        第六步：limit
+        第七步：行动操作
+'''
+maxSql.show()
+maxCount.show()
+maxSql.explain()
+
+
 
