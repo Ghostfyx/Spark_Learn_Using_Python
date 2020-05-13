@@ -23,3 +23,13 @@ Spark可以理解为MapReduce的升级版，为了计算MapReduce计算框架的
 
 ### 2.2 第二章 Spark浅析
 
+### 2.3 第三章 Spark工具集介绍
+涉及以下内容：
+1. 使用Spark-submit运行应用程序
+2. Dataset:类型安全的结构化数据结构API
+3. 结构化流处理
+4. 机器学习与高级分析
+5. 弹性分布式数据集RDD，Spark低级API
+6. SparkR
+7. 第三方软件包生态系统
+
