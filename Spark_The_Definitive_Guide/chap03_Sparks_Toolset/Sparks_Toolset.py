@@ -61,3 +61,7 @@ window_streaming_df.writeStream.format("console")\
 # window_streaming_df.writeStream.format("memory")\
 #     .queryName("customer_purchases").outputMode("complete").start()
 
+'''
+Spark Mllib 提供了一系列机器学习算法与特征工程相关的类库
+'''
+
