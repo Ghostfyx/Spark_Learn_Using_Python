@@ -8,6 +8,7 @@
 @desc: Spark权威指南第五章 基本结构化操作
 """
 import os
+from pprint import pprint
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, expr, column, lit
@@ -83,3 +84,63 @@ flight_data_schema.withColumn("numberOne", lit(1)).show(2)
 flight_data_schema.withColumn("withinCountry", expr("DEST_COUNTRY_NAME == ORIGIN_COUNTRY_NAME")).show(2)
 # 使用withColumnRenamed重命名列
 print(flight_data_schema.withColumnRenamed("DEST_COUNTRY_NAME", "dest").columns)
+# 保留字与关键字，使用反引号(`)实现命名保留字
+dfWithLongColName = flight_data_schema.withColumn("The Long Column-Name", expr("ORIGIN_COUNTRY_NAME"))
+dfWithLongColName.selectExpr("`The Long Column-Name`", "`The Long Column-Name` as `new col`").show()
+# 删除列drop(column_name)
+dfWithLongColName.drop("DEST_COUNTRY_NAME")
+# 使用where和filter过滤行
+flight_data_schema.where("count < 2").show(2)
+flight_data_schema.filter(col("count") < 2).show(2)
+# 按照先后顺序以链式的方式把过滤条件串联使用
+flight_data_schema.where(col("count") < 2).where("ORIGIN_COUNTRY_NAME != 'Croatia'").show(2)
+# 使用distinct方法去重
+print(flight_data_schema.select("ORIGIN_COUNTRY_NAME", "DEST_COUNTRY_NAME").distinct().count())
+# 随机抽样
+seed = 5
+withReplacement = True
+fraction = 0.5
+flight_data_schema.sample(withReplacement=withReplacement, fraction=fraction, seed=seed)
+# 随机分割
+splits = flight_data_schema.randomSplit(weights=[0.25, 0.75], seed=seed)
+print(splits[0].count())
+print(splits[1].count())
+# union操作纵向合并两个具有相同模式和列数的DataFrame
+newRows = [
+  Row("New Country", "Other Country", 5),
+  Row("New Country 2", "Other Country 3", 1)
+]
+parallelizedRows = spark.sparkContext.parallelize(newRows)
+newDF = spark.createDataFrame(parallelizedRows, myManualSchema)
+flight_data_schema.union(newDF).where("count = 1").where(col("ORIGIN_COUNTRY_NAME") != "United States")\
+    .show()
+# 使用orderBy和sort进行行排序，均接收列表达式和字符串，以及多个列
+flight_data_schema.sort("count").show(5)
+flight_data_schema.orderBy("count", "DEST_COUNTRY_NAME").show(5)
+flight_data_schema.orderBy(col("count"), col("DEST_COUNTRY_NAME")).show(5)
+# Limit方法限制提取内容的数量
+flight_data_schema.orderBy(expr("count desc")).limit(10).show()
+# 重划分和合并，根据一些经常过滤的列对数据进行分区，控制跨集群数据的物理布局，包括分区方案和分区数
+print(flight_data_schema.rdd.getNumPartitions())
+# repartition底层调用的是coalesce方法，默认shuffle
+flight_data_schema.repartition(5)
+flight_data_schema.coalesce(5)
+# 如果某列数据经常执行过滤操作，则根据该列进行重新分区是很有必要的
+flight_data_schema.repartition(col("DEST_COUNTRY_NAME"))
+flight_data_schema.repartition(5, col("DEST_COUNTRY_NAME")).coalesce(2)
+# 驱动器获取行
+collectDF = flight_data_schema.limit(10)
+collectDF.take(5)
+collectDF.show()
+collectDF.show(5, False)
+collectDF.collect()
+
+# toLocalIterator函数返回迭代器，将每个分区的数据返回给驱动器，但是不建议本地使用，
+# 若数据很大会导致程序内存崩溃
+partitionsIterator = flight_data_schema.toLocalIterator()
+pprint(partitionsIterator)
+
+
+
+
+
