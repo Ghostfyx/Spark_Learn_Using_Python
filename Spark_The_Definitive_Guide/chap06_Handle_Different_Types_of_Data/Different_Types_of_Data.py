@@ -12,7 +12,8 @@ import os
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, instr, expr, lit, bround, round, corr, monotonically_increasing_id, initcap, \
     lower, upper, ltrim, rtrim, trim, lpad, rpad, regexp_replace, translate, regexp_extract, locate, current_timestamp, \
-    current_date, date_sub, date_add, datediff, to_date, months_between, to_timestamp
+    current_date, date_sub, date_add, datediff, to_date, months_between, to_timestamp, coalesce, struct, split, explode, \
+    to_json
 
 PYSPARK_PYTHON = "/Library/Frameworks/Python.framework/Versions/3.6/bin/python3"
 os.environ["PYSPARK_PYTHON"] = PYSPARK_PYTHON
@@ -139,4 +140,94 @@ cleanDateDF = spark.range(1).select(
 cleanDateDF.createOrReplaceTempView("dateTable2")
 # to_date和to_timestamp区别：前者可选择一种日期格式，后者强制要求使用一种日期格式
 cleanDateDF.select(to_timestamp(col("date"), dateFormat)).show()
+# 确保使用同一种日期格式后，可以对日期进行过滤和比较操作
+# cleanDateDF.filter(col("data2") > lit("2017-12-12")).show()
+# 处理数据中的空值：显式的删除空值或使用特定值填充空值
 
+# coalesce函数实现从一组列中选择第一个非空值列
+df.select(coalesce(col("Description"), col("CustomerId"))).show(truncate=False)
+# drop删除包含null的行，subset指定对某些列的行进行操作
+df.na.drop("all", subset=["StockCode", "InvoiceNo"])
+# COMMAND ----------
+df.na.fill("all", subset=["StockCode", "InvoiceNo"])
+# fill函数通过一组值(映射)填充多列
+fill_cols_vals = {"StockCode": 5, "Description" : "No Value"}
+df.na.fill(fill_cols_vals)
+
+# 处理复杂结构类型
+complexDF = df.select(struct("Description", "InvoiceNo").alias("complex"))
+complexDF.createOrReplaceTempView("complexDF")
+complexDF.show()
+# 使用split指定分隔符
+df.select(split(col("Description"), " ")).show(2, truncate=False)
+# 返回每一行中数组的第一个元素
+df.select(split(col("Description"), " ").alias("array_col"))\
+  .selectExpr("array_col[0]").show(2)
+# explode函数的输入参数为一个包含数组的列，并未该数组中的每个值创建一行(每行复制该值)
+df.withColumn("splitted", split(col("Description"), " "))\
+  .withColumn("exploded", explode(col("splitted")))\
+  .select("Description", "InvoiceNo", "exploded").show(10, truncate=False)
+
+# map构造两列内容映射的键值对形式
+df.select(map(col("Description"), col("InvoiceNo")).alias("complex_map"))\
+  .selectExpr("complex_map['WHITE METAL LANTERN']").show(2)
+
+jsonDF = spark.range(1).selectExpr("""
+  '{"myJSONKey" : {"myJSONValue" : [1, 2, 3]}}' as jsonString""")
+df.selectExpr("(InvoiceNo, Description) as myStruct")\
+  .select(to_json(col("myStruct")))
+
+# 用户自定义函数(UDF)
+'''
+    1. 可以使用Python，Java，Scala编写UDF函数，但是推荐使用Java和Scala编写
+    2. Spark上将注册UDF以便在所有工作机器上使用，Spark在驱动器进程上序列化该函数，并将
+    它们通过网络传输到所有执行进程
+    3. 如果使用Java或Scala编写，则可在Java虚拟机中使用；如果使用Python编写，Spark在Worker
+    上启动一个Python进程，将所有数据转换为Python可解释的格式，在Python进程中针对该数据逐行执行
+    函数，结果返回给JVM和Spark。
+'''
+from pyspark.sql.functions import from_json
+from pyspark.sql.types import *
+parseSchema = StructType((
+  StructField("InvoiceNo",StringType(),True),
+  StructField("Description",StringType(),True)))
+df.selectExpr("(InvoiceNo, Description) as myStruct")\
+  .select(to_json(col("myStruct")).alias("newJSON"))\
+  .select(from_json(col("newJSON"), parseSchema), col("newJSON")).show(2)
+
+
+# COMMAND ----------
+
+udfExampleDF = spark.range(5).toDF("num")
+def power3(double_value):
+  return double_value ** 3
+power3(2.0)
+
+
+# COMMAND ----------
+# 向Spark注册UDF函数
+from pyspark.sql.functions import udf
+power3udf = udf(power3)
+
+
+# COMMAND ----------
+
+from pyspark.sql.functions import col
+udfExampleDF.select(power3udf(col("num"))).show(2)
+
+
+# COMMAND ----------
+
+udfExampleDF.selectExpr("power3(num)").show(2)
+# registered in Scala
+
+
+# COMMAND ----------
+
+from pyspark.sql.types import IntegerType, DoubleType
+spark.udf.register("power3py", power3, DoubleType())
+
+
+# COMMAND ----------
+
+udfExampleDF.selectExpr("power3py(num)").show(2)
